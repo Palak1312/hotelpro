@@ -1,238 +1,73 @@
-# HotelPro — Hotel Management Website
+# HotelPro
 
-A full-stack hotel booking and management web application built as a college project.
+HotelPro is a React application and Express API deployed together as one Vercel project. MongoDB Atlas is the source of truth. Sign-in is required, and the interface has no browser-storage data fallback.
 
-**Stack:** React 18 + Vite 5 (frontend) · Node.js + Express (backend) · MongoDB Atlas (database)  
-**Hosting:** Vercel (frontend, free tier) · Render (backend, free tier)
+## First setup
 
----
+Use Node.js 22 and npm.
 
-## Features
+1. Run `npm install`.
+2. Copy `.env.example` to `.env` and enter your Atlas connection string and database name.
+3. Generate a signing secret with `node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"` and put it in `JWT_SECRET`.
+4. Fill in `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_NAME`, and `SEED_PROPERTY_NAME`. The password must be at least 12 characters and at most 72 UTF-8 bytes. Address and phone are optional.
+5. Review `scripts/seed-data.json`: it contains the hotel's time zone, currency, check-in/out times, and 12 starter rooms with capacities and nightly rates. Adjust these to your property before seeding.
+6. Run `npm run seed`.
+7. Run `npm run dev`, then open the printed local URL and sign in using the seeded administrator account.
 
-| Feature | Details |
-|---|---|
-| Homepage | Hero, features, featured rooms, testimonials, CTA |
-| Room listing | All rooms with type filter (Standard / Deluxe / Suite / Presidential) |
-| Room detail | Full description, amenities, policies, sticky booking card |
-| Booking form | Guest info, dates, guests, special requests + full client-side validation |
-| Booking confirmation | Reference number, full summary, demo payment badge |
-| Booking lookup | Search any booking by reference code |
-| Admin dashboard | Stats cards, bookings table, status management, room seeding |
-| Responsive design | Mobile, tablet, and desktop layouts |
-| Loading / error states | Spinners, alerts, empty states on every data-fetching view |
+The same API handles development and Vercel requests. The local Vite server mounts the Express API directly, so no second development server is needed. Restart it after changing environment variables.
 
-> ⚠️ **Demo project** — No real payments are processed. All bookings show "DEMO PAID" status.
+Do not put Atlas credentials or JWT secrets in frontend variables. `.env` is ignored by Git. Atlas must permit the application's network access, and its database user needs read/write and index creation permissions. Transactions require an Atlas replica set or sharded deployment.
 
----
+## Seed behavior
 
-## Project Structure
+`scripts/seed.js` runs `scripts/bootstrap.js` using the inventory in `scripts/seed-data.json`.
 
-```
-hotelpro/
-├── backend/
-│   ├── config/         db.js (MongoDB connection)
-│   ├── controllers/    roomController, bookingController, adminController
-│   ├── middleware/     auth.js (JWT protect)
-│   ├── models/         Room, Booking, Admin
-│   ├── routes/         roomRoutes, bookingRoutes, adminRoutes
-│   ├── server.js
-│   ├── render.yaml     Render deployment config
-│   └── .env.example
-└── frontend/
-    ├── src/
-    │   ├── api/        axios.js, rooms.js, bookings.js, admin.js
-    │   ├── components/ Navbar, Footer, RoomCard, Alert, Spinner, …
-    │   ├── context/    AdminAuthContext
-    │   ├── pages/      Home, Rooms, RoomDetail, Booking, Confirmation,
-    │   │               BookingLookup, AdminLogin, AdminDashboard, NotFound
-    │   └── styles/     global.css
-    ├── vercel.json     Vercel SPA rewrite rule
-    └── .env.example
-```
+The seed creates one property, one administrator and the configured room inventory, plus database indexes. It creates no guests, reservations or payment history. Those screens start empty until staff enter operational records.
 
----
+The seed is safe to repeat: it only inserts missing records and preserves existing passwords, settings, rates and room edits. It does not reset an existing administrator password. A conflicting admin email belonging to another property or role causes the seed to stop. Never use seed runs as a database reset.
 
-## Local Development
+If you used the earlier schema, choose a new `MONGODB_DB` and run the new seed. Old records are not deleted or silently converted. The application rejects incompatible reservation or room records rather than presenting incorrect financial figures.
 
-### Prerequisites
-- Node.js 18+
-- A MongoDB Atlas free cluster (or local MongoDB)
+## Working features
 
-### 1. Clone the repo
-```bash
-git clone https://github.com/<your-username>/hotelpro.git
-cd hotelpro
-```
+- Public workspace sign-up creates a real property and administrator in Atlas; no inbox or email verification is required. The email-shaped login name must still be unique. Sign-in uses hashed passwords and an HttpOnly session cookie, with sign-out and session restoration.
+- New workspaces start with empty room inventory, guests, reservations and payment history. Add the property's actual rooms before making reservations.
+- Roles for administrator, manager and front desk. Administrators create and activate/deactivate staff. Account activity and permissions are checked on every authenticated request.
+- Shared property settings, contact information, time zone and check-in/out policy times.
+- Room creation/editing, capacities, nightly rates, readiness and maintenance status.
+- Availability lookup, physical-room allocation and reservation creation. Prices are calculated from stored room rates and stay duration on the server. Existing bookings retain their price.
+- Transactional overlap prevention: reservation changes serialize on the room before checking dates. Back-to-back bookings are permitted because check-out dates are exclusive.
+- Controlled check-in, check-out and cancellation. Check-in requires a vacant, ready room during the booked dates. Check-out requires a settled balance and marks the room for cleaning.
+- Guest records, contact editing, notes and reservation history.
+- Received-payment ledger with partial payments, balance checks, transaction references and request deduplication.
+- Database-derived dashboard/report figures, CSV downloads and a persisted activity log.
 
-### 2. Set up the backend
-```bash
-cd backend
-cp .env.example .env        # fill in your values (see below)
-npm install
-npm run dev                 # starts on http://localhost:5000
-```
+Hotel data refreshes after each successful write, when the window gains focus, and every 10 seconds while visible. This is near-real-time polling, not a WebSocket subscription. A failed refresh displays an error; it never substitutes fabricated data. Open forms retain unsaved edits during background refreshes.
 
-**`backend/.env`**
-```
-MONGODB_URI=mongodb+srv://<user>:<pass>@cluster0.xxxxx.mongodb.net/hotelpro?retryWrites=true&w=majority
-JWT_SECRET=any_long_random_string_here
-CLIENT_URL=http://localhost:5173
-PORT=5000
-NODE_ENV=development
-```
+## Payments
 
-### 3. Seed sample rooms
-Once the backend is running, hit this endpoint once to populate rooms:
-```
-POST http://localhost:5000/api/admin/seed
-```
-Using curl:
-```bash
-curl -X POST http://localhost:5000/api/admin/seed
-```
-Or open the URL in Postman / Thunder Client.
+HotelPro records payments already collected by cash, UPI, bank transfer or an external card terminal. It does not initiate bank transfers or charge cards. A non-cash entry requires a transaction reference. No card credentials are accepted. Currency values are stored as integer minor units to avoid decimal rounding errors.
 
-### 4. Create an admin account
-Connect to your MongoDB Atlas cluster and insert one document into the `admins` collection:
-```json
-{
-  "name": "Admin",
-  "email": "admin@hotelpro.com",
-  "password": "$2a$10$..."
-}
-```
-> The password must be a **bcrypt hash**. The easiest way is to run this one-liner:
-```bash
-node -e "const b=require('bcryptjs');b.hash('password123',10).then(h=>console.log(h))"
-```
-Run it inside `backend/` (bcryptjs is already installed). Copy the hash into MongoDB Atlas.
+Payment entries are immutable through the app. Refund processing and ledger reversals are not implemented. Cancellation is blocked once payments have been recorded, so staff cannot silently discard a paid stay. Currency is fixed after property setup.
 
-### 5. Set up the frontend
-```bash
-cd ../frontend
-cp .env.example .env.local  # already set to localhost:5000
-npm install
-npm run dev                 # starts on http://localhost:5173
-```
+## Vercel deployment
 
----
+Import this repository as one Vercel project with Node.js 22. The configuration builds the frontend to `dist` and routes `/api/*` to the single `api/index.js` entry point. Server helpers live outside the API directory.
 
-## Deployment
+Set `MONGODB_URI`, `MONGODB_DB` and `JWT_SECRET` in Vercel's environment settings. Use the same database you seeded, and a separate database for preview deployments. Seed credentials are only needed locally for setup and should not be added to the browser bundle or deployment configuration.
 
-### A. Deploy the backend to Render (free web service)
+## Validation
 
-1. Push your repo to GitHub.
-2. Go to [render.com](https://render.com) → **New → Web Service**.
-3. Connect your GitHub repo, select the **`backend`** folder as root directory.
-4. Settings:
-   - **Build command:** `npm install`
-   - **Start command:** `npm start`
-   - **Instance type:** Free
-5. Add these **Environment Variables** in the Render dashboard:
+- `npm run build` builds the frontend and loads the API module through the development configuration.
+- `npm test` runs date, monetary precision, reservation lifecycle and reporting checks.
+- For the Atlas integration test, set `TEST_MONGODB_URI` to a test-capable Atlas connection and run `npm test`. The test creates a randomly named `hotelpro_test_*` database, verifies concurrent booking prevention, server-owned pricing, payment retry deduplication, role restrictions, tenant isolation, session revocation and lifecycle updates, then removes only that generated test database. It never uses the configured application database. The Atlas test is explicitly skipped without this variable.
 
-| Key | Value |
-|---|---|
-| `MONGODB_URI` | Your Atlas connection string |
-| `JWT_SECRET` | A long random secret |
-| `CLIENT_URL` | Your Vercel frontend URL (set after Vercel deploy) |
-| `NODE_ENV` | `production` |
+## API
 
-6. Click **Deploy**. Render will give you a URL like `https://hotelpro-api.onrender.com`.
-7. Test the health check: `https://hotelpro-api.onrender.com/health`
+Authentication: `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`.
 
-> **Free tier cold start:** Render free services spin down after 15 min of inactivity and take ~30–50 seconds to wake up on the next request. The frontend shows a "Request timed out. The server may be waking up — please retry." message during this time. This is expected behaviour on the free tier.
+Shared state: `GET /api/state`, `GET /api/availability`, `GET /api/health`.
 
-### B. Deploy the frontend to Vercel (Hobby free tier)
+Writes: `POST /api/reservations`, `PATCH /api/reservations/:id/status`, `POST /api/reservations/:id/payment`, `POST/PATCH /api/rooms[/:id]`, `POST/PATCH /api/guests[/:id]`, `PUT /api/property`, `POST/PATCH /api/staff[/:id]`.
 
-1. Go to [vercel.com](https://vercel.com) → **New Project**.
-2. Import your GitHub repo.
-3. Set the **Root Directory** to `frontend`.
-4. Framework preset: **Vite**
-5. Settings:
-   - **Install command:** `npm install`
-   - **Build command:** `npm run build`
-   - **Output directory:** `dist`
-6. Add this **Environment Variable**:
-
-| Key | Value |
-|---|---|
-| `VITE_API_URL` | Your Render backend URL, e.g. `https://hotelpro-api.onrender.com` |
-
-7. Click **Deploy**. Vercel gives you a URL like `https://hotelpro.vercel.app`.
-
-### C. Update CORS on the backend
-
-After you have the Vercel URL, go back to Render → your service → **Environment** and update:
-```
-CLIENT_URL = https://hotelpro.vercel.app
-```
-Render will redeploy automatically.
-
-### D. Seed rooms on production
-
-Call the seed endpoint once on the deployed backend:
-```
-POST https://hotelpro-api.onrender.com/api/admin/seed
-```
-This is a no-op if rooms already exist.
-
----
-
-## API Reference
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/health` | None | Health check |
-| GET | `/api/rooms` | None | List rooms (optional `?type=Deluxe`) |
-| GET | `/api/rooms/:id` | None | Single room |
-| POST | `/api/bookings` | None | Create booking |
-| GET | `/api/bookings/reference/:ref` | None | Look up booking |
-| POST | `/api/admin/login` | None | Admin sign-in → JWT |
-| POST | `/api/admin/seed` | None | Seed sample rooms (no-op if exist) |
-| GET | `/api/admin/dashboard` | JWT | Stats |
-| GET | `/api/admin/bookings` | JWT | All bookings |
-| PATCH | `/api/admin/bookings/:id/status` | JWT | Update status |
-| POST | `/api/admin/rooms` | JWT | Create room |
-| PUT | `/api/admin/rooms/:id` | JWT | Update room |
-| DELETE | `/api/admin/rooms/:id` | JWT | Delete room |
-
----
-
-## Free-Tier Compliance Checklist
-
-- [x] MongoDB Atlas free shared cluster (M0) — 512 MB storage
-- [x] Render free web service — 750 hours/month
-- [x] Vercel Hobby tier — unlimited bandwidth for personal projects
-- [x] No paid APIs, no Redis, no paid image hosting
-- [x] No real payment processing — demo status only
-- [x] `.env` files are in `.gitignore` — no secrets committed
-- [x] No secrets hardcoded in frontend code
-- [x] Rate limiting on API (200 req / 15 min)
-- [x] Optimised CSS-only images (gradients) — no external image CDN needed
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React 18, React Router 6, Axios, Vite 5 |
-| Styling | Custom CSS (no frameworks), Google Fonts |
-| Backend | Node.js, Express 4, Mongoose 8 |
-| Database | MongoDB Atlas (free M0 cluster) |
-| Auth | JWT (jsonwebtoken) + bcryptjs |
-| Security | express-rate-limit, CORS whitelist, dotenv |
-| Hosting | Vercel (frontend) + Render (backend) |
-
----
-
-## Known Limitations (Free Tier)
-
-1. **Backend cold starts** — Render free services hibernate after inactivity. First request after sleep takes 30–50 s. Users see a friendly retry message.
-2. **No file uploads** — Room images use CSS gradients. Adding real image uploads would require a free Cloudinary account (not included to stay minimal).
-3. **Admin account creation** — Requires a one-time MongoDB Atlas manual insert. There is no self-registration UI to keep the project secure.
-4. **No email confirmations** — Would require an email service (e.g. SendGrid free tier). Not included to avoid additional third-party dependencies.
-
----
-
-*College project · Built with React, Node.js, Express, and MongoDB Atlas*
+All operational endpoints require an active session and scope data to that user's property. Mutation endpoints require JSON and reject cross-origin browser requests. Responses containing hotel records are not cached.
