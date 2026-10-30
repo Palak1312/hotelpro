@@ -1,0 +1,17 @@
+{
+  "property": { "timezone": "Asia/Kolkata", "currency": "INR", "checkInTime": "14:00", "checkOutTime": "11:00" },
+  "rooms": [
+    { "number": "101", "type": "Garden Twin", "floor": 1, "capacity": 2, "nightlyRate": "3500.00" },
+    { "number": "102", "type": "Garden Twin", "floor": 1, "capacity": 2, "nightlyRate": "3500.00" },
+    { "number": "103", "type": "Garden Twin", "floor": 1, "capacity": 2, "nightlyRate": "3500.00" },
+    { "number": "104", "type": "Garden Twin", "floor": 1, "capacity": 2, "nightlyRate": "3500.00" },
+    { "number": "201", "type": "Deluxe King", "floor": 2, "capacity": 3, "nightlyRate": "5500.00" },
+    { "number": "202", "type": "Deluxe King", "floor": 2, "capacity": 3, "nightlyRate": "5500.00" },
+    { "number": "203", "type": "Deluxe King", "floor": 2, "capacity": 3, "nightlyRate": "5500.00" },
+    { "number": "204", "type": "Deluxe King", "floor": 2, "capacity": 3, "nightlyRate": "5500.00" },
+    { "number": "301", "type": "Family Suite", "floor": 3, "capacity": 4, "nightlyRate": "8500.00" },
+    { "number": "302", "type": "Family Suite", "floor": 3, "capacity": 4, "nightlyRate": "8500.00" },
+    { "number": "303", "type": "Family Suite", "floor": 3, "capacity": 4, "nightlyRate": "8500.00" },
+    { "number": "304", "type": "Family Suite", "floor": 3, "capacity": 4, "nightlyRate": "8500.00" }
+  ]
+}
