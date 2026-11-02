@@ -49,7 +49,13 @@ if (!config.success) {
     console.log(`Rooms: ${await db.collection('rooms').countDocuments({ propertyId })}. Existing settings, room edits and passwords were preserved.`)
     console.log('No guest stays or payment records were generated.')
   } catch (error) {
-    console.error(`Seed failed (${error.name || 'Error'}). ${error.message?.startsWith('This admin email') ? error.message : 'Check the Atlas connection, network access, database permissions and seed configuration.'}`)
+    const detail = error.message?.startsWith('This admin email') ? error.message
+      : error.codeName === 'AuthenticationFailed' || error.code === 18 ? 'Atlas rejected the database username or password (AuthenticationFailed).'
+      : error.codeName === 'Unauthorized' || error.code === 13 ? 'The database user lacks permission to create indexes or write seed records (Unauthorized).'
+      : error.codeName === 'DuplicateKey' || error.code === 11000 ? `A unique index conflicts with existing data. Collection: ${error.message?.match(/collection: ([^ ]+)/)?.[1] || 'unknown'}; index: ${Object.keys(error.keyPattern || {}).join(', ') || 'unknown'}.`
+      : error.name === 'MongoServerSelectionError' ? `Could not reach the Atlas servers: ${error.cause?.code || error.reason?.type || 'check DNS and network access'}.`
+      : `Check the Atlas connection, database permissions and seed configuration${error.codeName ? ` (${error.codeName})` : ''}.`
+    console.error(`Seed failed (${error.name || 'Error'}). ${detail}`)
     process.exitCode = 1
   } finally { await client.close() }
 }
